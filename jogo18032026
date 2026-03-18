@@ -1,0 +1,200 @@
+
+import pygame
+import sys
+import random
+
+# --- CONFIGURAÇÕES INICIAIS ---
+pygame.init()
+LARGURA, ALTURA = 900, 600
+tela = pygame.display.set_mode((LARGURA, ALTURA))
+pygame.display.set_caption("🕵️ Missão Elevador: Travessia Restrita 🕵️")
+relogio = pygame.time.Clock()
+
+fonte_principal = pygame.font.SysFont("Arial", 24, bold=True)
+fonte_grande = pygame.font.SysFont("Arial", 50, bold=True)
+fonte_emoji = pygame.font.SysFont("Segoe UI Symbol", 40)
+
+def reiniciar_jogo():
+    global jogador, vel_y, direcao_jogador, timer_invencivel, pontuacao, vidas, balas, balas_inimigas, inimigos, velocidades_inimigos, portas, elevador, direcao_elevador
+    jogador = pygame.Rect(100, 500, 40, 60)
+    vel_y = 0
+    direcao_jogador = 1
+    timer_invencivel = 0
+    pontuacao = 0
+    vidas = 3
+    balas = []
+    balas_inimigas = []
+    inimigos = []
+    velocidades_inimigos = []
+    
+    for i in range(4):
+        inimigos.append(pygame.Rect(random.randint(400, 850), 0, 40, 60))
+        velocidades_inimigos.append(random.choice([-2, 2]))
+    
+    for d in portas: d["coletada"] = False
+    elevador.y = 530
+    direcao_elevador = -1
+
+# MAPA
+andares = [pygame.Rect(0, i * 100 + 150, 900, 20) for i in range(5)]
+andares.append(pygame.Rect(0, 550, 900, 20))
+
+portas = [
+    {"rect": pygame.Rect(200, 510, 40, 40), "coletada": False},
+    {"rect": pygame.Rect(500, 410, 40, 40), "coletada": False},
+    {"rect": pygame.Rect(300, 310, 40, 40), "coletada": False},
+    {"rect": pygame.Rect(750, 210, 40, 40), "coletada": False}
+]
+
+escadas = [
+    pygame.Rect(120, 450, 40, 105),
+    pygame.Rect(650, 350, 40, 105),
+    pygame.Rect(200, 250, 40, 105),
+    pygame.Rect(500, 150, 40, 105)
+]
+
+elevador = pygame.Rect(400, 530, 80, 20)
+velocidade_elevador = 2
+direcao_elevador = -1
+
+def desenhar_texto_centralizado(texto, retangulo, fonte, cor=(255,255,255)):
+    superficie = fonte.render(texto, True, cor)
+    posicao = superficie.get_rect(center=retangulo.center)
+    tela.blit(superficie, posicao)
+
+def mostrar_tela_final(mensagem, cor):
+    esperando = True
+    while esperando:
+        tela.fill((10, 10, 20))
+        desenhar_texto_centralizado(mensagem, pygame.Rect(0, 200, LARGURA, 100), fonte_grande, cor)
+        desenhar_texto_centralizado("Pressione R para Reiniciar ou ESC para Sair", pygame.Rect(0, 300, LARGURA, 50), fonte_principal)
+        pygame.display.update()
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT: return False
+            if evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_r: reiniciar_jogo(); return True
+                if evento.key == pygame.K_ESCAPE: return False
+    return False
+
+reiniciar_jogo()
+
+# --- LOOP PRINCIPAL ---
+executando = True
+while executando:
+    relogio.tick(60)
+    tela.fill((20, 24, 35))
+
+    for evento in pygame.event.get():
+        if evento.type == pygame.QUIT: executando = False
+        if evento.type == pygame.KEYDOWN:
+            if evento.key == pygame.K_SPACE and vel_y == 0:
+                vel_y = -10 
+            if evento.key == pygame.K_z:
+                bala = pygame.Rect(jogador.centerx, jogador.centery, 10, 4)
+                balas.append({"rect": bala, "dir": direcao_jogador})
+
+    teclas = pygame.key.get_pressed()
+    
+    # Movimento Horizontal
+    if teclas[pygame.K_LEFT]:
+        jogador.x -= 5
+        direcao_jogador = -1
+    if teclas[pygame.K_RIGHT]:
+        jogador.x += 5
+        direcao_jogador = 1
+    
+    if jogador.left < 0: jogador.left = 0
+    if jogador.right > LARGURA: jogador.right = LARGURA
+
+    # LÓGICA DE ESCADA
+    na_escada = any(jogador.colliderect(e) for e in escadas)
+    
+    if na_escada:
+        vel_y = 0 
+        if teclas[pygame.K_UP]: jogador.y -= 5
+        elif teclas[pygame.K_DOWN]: jogador.y += 5
+    else:
+        vel_y += 0.6
+        jogador.y += vel_y
+
+    # COLISÃO COM PISOS
+    for andar in andares:
+        if jogador.colliderect(andar):
+            if vel_y > 0 and not na_escada:
+                if jogador.bottom <= andar.top + 15:
+                    jogador.bottom = andar.top
+                    vel_y = 0
+            elif vel_y < 0 and not na_escada:
+                if jogador.top >= andar.bottom - 15:
+                    jogador.top = andar.bottom
+                    vel_y = 0
+
+    # Colisão com Elevador
+    if jogador.colliderect(elevador) and vel_y >= 0:
+        if jogador.bottom <= elevador.top + 15:
+            jogador.bottom = elevador.top
+            vel_y = 0
+            jogador.y += velocidade_elevador * direcao_elevador
+
+    # Movimento do Elevador
+    elevador.y += velocidade_elevador * direcao_elevador
+    if elevador.y <= 160 or elevador.y >= 530: direcao_elevador *= -1
+
+    # Atualização de Inimigos
+    for i, inimigo in enumerate(inimigos):
+        indice_andar = i % len(andares)
+        inimigo.y = andares[indice_andar].top - 60
+        inimigo.x += velocidades_inimigos[i]
+        if inimigo.left <= 0 or inimigo.right >= LARGURA: velocidades_inimigos[i] *= -1
+        if random.randint(0, 100) == 1:
+            bala_e = pygame.Rect(inimigo.centerx, inimigo.centery, 10, 4)
+            balas_inimigas.append({"rect": bala_e, "dir": -1 if inimigo.centerx > jogador.centerx else 1})
+
+    # Lógica das balas do jogador
+    for b in balas[:]:
+        b["rect"].x += 12 * b["dir"]
+        for e in inimigos:
+            if b["rect"].colliderect(e):
+                pontuacao += 100; e.x = random.randint(400, 850)
+                if b in balas: balas.remove(b)
+        if b["rect"].x < 0 or b["rect"].x > LARGURA: 
+            if b in balas: balas.remove(b)
+
+    # Lógica das balas inimigas
+    for be in balas_inimigas[:]:
+        be["rect"].x += 7 * be["dir"]
+        if be["rect"].colliderect(jogador) and timer_invencivel == 0:
+            vidas -= 1; timer_invencivel = 90
+            jogador.x, jogador.y = 100, 500
+            balas_inimigas.remove(be)
+        elif be["rect"].x < 0 or be["rect"].x > LARGURA: balas_inimigas.remove(be)
+
+    # DESENHO
+    for a in andares: pygame.draw.rect(tela, (70, 70, 80), a)
+    for es in escadas: pygame.draw.rect(tela, (100, 60, 30), es)
+    pygame.draw.rect(tela, (255, 215, 0), elevador)
+    
+    for d in portas:
+        if not d["coletada"]: 
+            desenhar_texto_centralizado("🚪", d["rect"], fonte_emoji)
+            if jogador.colliderect(d["rect"]): d["coletada"] = True; pontuacao += 500
+            
+    for e in inimigos: desenhar_texto_centralizado("🤖", e, fonte_emoji)
+    
+    if timer_invencivel % 10 < 5: desenhar_texto_centralizado("🕵️", jogador, fonte_emoji)
+    if timer_invencivel > 0: timer_invencivel -= 1
+    
+    for b in balas: pygame.draw.circle(tela, (255, 255, 0), b["rect"].center, 4)
+    for be in balas_inimigas: pygame.draw.circle(tela, (255, 50, 50), be["rect"].center, 4)
+
+    # HUD
+    tela.blit(fonte_principal.render(f"PONTOS: {pontuacao}", True, (255, 255, 255)), (20, 20))
+    tela.blit(fonte_principal.render(f"VIDAS: {vidas}", True, (255, 100, 100)), (20, 50))
+
+    # Condições de fim de jogo
+    if all(d["coletada"] for d in portas): executando = mostrar_tela_final("🏆 VITÓRIA! 🏆", (0, 255, 0))
+    elif vidas <= 0: executando = mostrar_tela_final("💀 GAME OVER 💀", (255, 0, 0))
+
+    pygame.display.update()
+
+pygame.quit()
